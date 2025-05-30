@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { TopBar } from './components/TopBar';
 import { CodeEditor } from './components/CodeEditor';
 import Terminal from './components/Terminal';
