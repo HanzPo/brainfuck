@@ -183,7 +183,9 @@ function App() {
 
   // Calculate current line in editor
   const getCurrentLine = useCallback(() => {
-    if (!interpreterState) return undefined;
+    if (!interpreterState) {
+      return undefined;
+    }
     
     const lines = code.split('\n');
     let charCount = 0;
@@ -211,6 +213,7 @@ function App() {
               value={code}
               onChange={handleCodeChange}
               currentLine={getCurrentLine()}
+              currentCharIndex={interpreterState?.programCounter}
             />
           </div>
         </div>
