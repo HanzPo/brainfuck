@@ -151,10 +151,10 @@ export class BrainfuckInterpreter {
     this.state.isPaused = true;
   }
 
-  resume() {
+  async resume() {
     if (this.state.isPaused) {
       this.state.isPaused = false;
-      this.run();
+      return this.run();
     }
   }
 } 

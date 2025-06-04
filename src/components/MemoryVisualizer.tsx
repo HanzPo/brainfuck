@@ -1,38 +1,68 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 
 interface MemoryVisualizerProps {
   memory: Uint8Array;
   pointer: number;
-  visibleCells?: number;
 }
 
 export const MemoryVisualizer: React.FC<MemoryVisualizerProps> = ({ 
   memory, 
-  pointer, 
-  visibleCells = 20 
+  pointer
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const pointerCellRef = useRef<HTMLDivElement>(null);
+  const [visibleCells, setVisibleCells] = useState(20);
 
-  // Calculate visible range
+  // Calculate how many cells can fit in the container width
+  const calculateVisibleCells = useCallback(() => {
+    if (containerRef.current) {
+      const containerWidth = containerRef.current.offsetWidth - 32; // Subtract padding
+      const cellWidth = 52; // 48px cell + 4px gap
+      const maxCells = Math.floor(containerWidth / cellWidth);
+      setVisibleCells(Math.max(10, Math.min(maxCells, 50))); // Min 10, max 50 cells
+    }
+  }, []);
+
+  // Set up ResizeObserver to watch container size changes
+  useEffect(() => {
+    calculateVisibleCells();
+
+    const resizeObserver = new ResizeObserver(() => {
+      calculateVisibleCells();
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [calculateVisibleCells]);
+
+  // Calculate visible range with pointer centered
   const startIndex = Math.max(0, pointer - Math.floor(visibleCells / 2));
   const endIndex = Math.min(memory.length, startIndex + visibleCells);
-  const visibleMemory = Array.from(memory.slice(startIndex, endIndex));
+  const adjustedStartIndex = Math.max(0, endIndex - visibleCells);
+  const visibleMemory = Array.from(memory.slice(adjustedStartIndex, endIndex));
 
-  // Auto-scroll to keep pointer in view
+  // Auto-scroll to keep pointer in view when it changes
   useEffect(() => {
-    if (pointerCellRef.current && scrollContainerRef.current) {
-      pointerCellRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
-      });
+    if (scrollContainerRef.current) {
+      const pointerElement = scrollContainerRef.current.querySelector(`[data-index="${pointer}"]`);
+      if (pointerElement) {
+        pointerElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center'
+        });
+      }
     }
-  }, [pointer]);
+  }, [pointer, visibleCells]);
 
   return (
-    <div className="bg-muted border rounded-md p-4">
+    <div ref={containerRef} className="bg-muted border rounded-md p-4">
       <div className="mb-2 text-sm font-medium text-foreground">
         Memory Visualization (Pointer at: {pointer})
       </div>
@@ -40,15 +70,15 @@ export const MemoryVisualizer: React.FC<MemoryVisualizerProps> = ({
         ref={scrollContainerRef}
         className="overflow-x-auto"
       >
-        <div className="flex gap-1 min-w-max">
+        <div className="flex gap-1 min-w-max justify-center">
           {visibleMemory.map((value, index) => {
-            const actualIndex = startIndex + index;
+            const actualIndex = adjustedStartIndex + index;
             const isPointer = actualIndex === pointer;
             
             return (
               <div
                 key={actualIndex}
-                ref={isPointer ? pointerCellRef : undefined}
+                data-index={actualIndex}
                 className={cn(
                   "flex flex-col items-center",
                   isPointer && "relative"
@@ -85,9 +115,9 @@ export const MemoryVisualizer: React.FC<MemoryVisualizerProps> = ({
       {/* ASCII representation */}
       <div className="mt-4 pt-4 border-t">
         <div className="text-sm font-medium text-foreground mb-2">ASCII Characters:</div>
-        <div className="flex gap-1 font-mono text-xs overflow-x-auto">
+        <div className="flex gap-1 font-mono text-xs overflow-x-auto justify-center">
           {visibleMemory.map((value, index) => {
-            const actualIndex = startIndex + index;
+            const actualIndex = adjustedStartIndex + index;
             const isPointer = actualIndex === pointer;
             const char = value >= 32 && value <= 126 ? String.fromCharCode(value) : '·';
             

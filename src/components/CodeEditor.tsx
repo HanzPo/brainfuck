@@ -54,7 +54,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, current
     <div className="flex h-full bg-card border rounded-md overflow-hidden">
       <div 
         ref={lineNumbersRef}
-        className="flex-shrink-0 select-none bg-muted text-muted-foreground text-sm font-mono p-4 pr-2 overflow-hidden"
+        className="flex-shrink-0 select-none bg-muted text-muted-foreground text-sm font-mono p-4 pr-2 overflow-y-hidden"
+        style={{ minHeight: 0 }}
       >
         {Array.from({ length: lineCount }, (_, i) => (
           <div
@@ -73,8 +74,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, current
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        className="flex-1 p-4 font-mono text-sm bg-transparent resize-none outline-none"
-        style={{ lineHeight: '1.5rem' }}
+        className="flex-1 p-4 font-mono text-sm bg-transparent resize-none outline-none overflow-y-auto"
+        style={{ lineHeight: '1.5rem', minHeight: 0 }}
         placeholder="Enter your Brainfuck code here..."
         spellCheck={false}
       />

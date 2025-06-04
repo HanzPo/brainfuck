@@ -7,7 +7,7 @@ import { MemoryVisualizer } from './components/MemoryVisualizer';
 import { Button } from './components/ui/button';
 import { BrainfuckInterpreter } from './utils/brainfuck';
 import type { BrainfuckState } from './utils/brainfuck';
-import { Play, Square, StepForward } from 'lucide-react';
+import { Play, Pause, RotateCcw, StepForward } from 'lucide-react';
 
 const STORAGE_KEY = 'brainfuck-code';
 
@@ -20,7 +20,7 @@ function App() {
   const [code, setCode] = useState<string>('');
   const [isSaved, setIsSaved] = useState<boolean>(true);
   const [interpreterState, setInterpreterState] = useState<BrainfuckState | null>(null);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [executionState, setExecutionState] = useState<'idle' | 'running' | 'paused'>('idle');
   const terminalRef = useRef<TerminalRef>(null);
   const interpreterRef = useRef<BrainfuckInterpreter | null>(null);
 
@@ -67,50 +67,119 @@ function App() {
     return interpreter;
   }, [code]);
 
-  // Run the program
-  const handleRun = useCallback(async () => {
-    if (isRunning) {
-      // Stop the current execution
-      if (interpreterRef.current) {
-        interpreterRef.current.pause();
+  // Start/Resume the program
+  const handleStart = useCallback(async () => {
+    if (executionState === 'paused' && interpreterRef.current) {
+      // Resume from pause
+      setExecutionState('running');
+      
+      // Continue monitoring state
+      const updateInterval = setInterval(() => {
+        if (interpreterRef.current) {
+          const state = interpreterRef.current.getState();
+          setInterpreterState(state);
+          
+          // Check if execution has stopped
+          if (!state.isRunning) {
+            clearInterval(updateInterval);
+            if (state.isPaused) {
+              setExecutionState('paused');
+            } else {
+              setExecutionState('idle');
+            }
+          }
+        }
+      }, 50);
+      
+      await interpreterRef.current.resume();
+      
+      // Clean up after resume completes
+      clearInterval(updateInterval);
+      const finalState = interpreterRef.current.getState();
+      setInterpreterState(finalState);
+      if (!finalState.isRunning) {
+        setExecutionState('idle');
       }
-      setIsRunning(false);
       return;
     }
 
-    // Reset terminal and create new interpreter
-    terminalRef.current?.reset();
-    const interpreter = createInterpreter();
-    setIsRunning(true);
+    // Start new execution only if idle
+    if (executionState === 'idle') {
+      terminalRef.current?.reset();
+      const interpreter = createInterpreter();
+      setExecutionState('running');
 
-    // Update state during execution
-    const updateInterval = setInterval(() => {
-      if (interpreterRef.current) {
-        setInterpreterState(interpreterRef.current.getState());
+      // Update state during execution
+      const updateInterval = setInterval(() => {
+        if (interpreterRef.current) {
+          const state = interpreterRef.current.getState();
+          setInterpreterState(state);
+          
+          // Check if execution has stopped
+          if (!state.isRunning) {
+            clearInterval(updateInterval);
+            if (state.isPaused) {
+              setExecutionState('paused');
+            } else {
+              setExecutionState('idle');
+            }
+          }
+        }
+      }, 50);
+
+      await interpreter.run();
+
+      clearInterval(updateInterval);
+      setInterpreterState(interpreter.getState());
+      if (interpreter.getState().isPaused) {
+        setExecutionState('paused');
+      } else {
+        setExecutionState('idle');
       }
-    }, 50);
+    }
+  }, [executionState, createInterpreter]);
 
-    await interpreter.run();
+  // Pause the program
+  const handlePause = useCallback(() => {
+    if (interpreterRef.current && executionState === 'running') {
+      interpreterRef.current.pause();
+      setExecutionState('paused');
+    }
+  }, [executionState]);
 
-    clearInterval(updateInterval);
-    setInterpreterState(interpreter.getState());
-    setIsRunning(false);
-  }, [code, isRunning, createInterpreter]);
+  // Reset the program
+  const handleReset = useCallback(() => {
+    if (interpreterRef.current) {
+      interpreterRef.current.reset();
+      setInterpreterState(null);
+    }
+    terminalRef.current?.reset();
+    setExecutionState('idle');
+    interpreterRef.current = null;
+  }, []);
 
   // Step through the program
   const handleStep = useCallback(async () => {
-    if (!interpreterRef.current || isRunning) {
+    // If we're paused, just step without creating a new interpreter
+    if (executionState === 'paused' && interpreterRef.current) {
+      await interpreterRef.current.step();
+      setInterpreterState(interpreterRef.current.getState());
+      return;
+    }
+    
+    // If idle and no interpreter, create one
+    if (!interpreterRef.current && executionState === 'idle') {
       // Create new interpreter if needed
       terminalRef.current?.reset();
       const interpreter = createInterpreter();
       setInterpreterState(interpreter.getState());
     }
 
-    if (interpreterRef.current) {
+    if (interpreterRef.current && executionState !== 'running') {
       await interpreterRef.current.step();
       setInterpreterState(interpreterRef.current.getState());
     }
-  }, [isRunning, createInterpreter]);
+  }, [executionState, createInterpreter]);
 
   // Calculate current line in editor
   const getCurrentLine = useCallback(() => {
@@ -135,26 +204,22 @@ function App() {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Code Editor */}
-        <div className="w-1/2 p-4">
-          <div className="h-full flex flex-col">
-            <h2 className="text-sm font-semibold mb-2">Code Editor</h2>
-            <div className="flex-1">
-              <CodeEditor
-                value={code}
-                onChange={handleCodeChange}
-                currentLine={getCurrentLine()}
-              />
-            </div>
+        <div className="w-1/2 p-4 flex flex-col min-h-0">
+          <h2 className="text-sm font-semibold mb-2">Code Editor</h2>
+          <div className="flex-1 min-h-0">
+            <CodeEditor
+              value={code}
+              onChange={handleCodeChange}
+              currentLine={getCurrentLine()}
+            />
           </div>
         </div>
         
         {/* Terminal */}
-        <div className="w-1/2 p-4">
-          <div className="h-full flex flex-col">
-            <h2 className="text-sm font-semibold mb-2">Terminal</h2>
-            <div className="flex-1 border rounded-md overflow-hidden">
-              <Terminal ref={terminalRef} />
-            </div>
+        <div className="w-1/2 p-4 flex flex-col">
+          <h2 className="text-sm font-semibold mb-2">Terminal</h2>
+          <div className="flex-1 border rounded-md overflow-hidden">
+            <Terminal ref={terminalRef} />
           </div>
         </div>
       </div>
@@ -162,28 +227,39 @@ function App() {
       {/* Controls */}
       <div className="px-4 py-2 bg-card border-t">
         <div className="flex gap-2">
+          {executionState === 'running' ? (
+            <Button
+              onClick={handlePause}
+              variant="secondary"
+              className="flex items-center gap-2"
+            >
+              <Pause className="h-4 w-4" />
+              Pause
+            </Button>
+          ) : (
+            <Button
+              onClick={handleStart}
+              variant="default"
+              className="flex items-center gap-2"
+            >
+              <Play className="h-4 w-4" />
+              {executionState === 'paused' ? 'Resume' : 'Start'}
+            </Button>
+          )}
+          
           <Button
-            onClick={handleRun}
-            variant={isRunning ? "destructive" : "default"}
+            onClick={handleReset}
+            variant="outline"
             className="flex items-center gap-2"
           >
-            {isRunning ? (
-              <>
-                <Square className="h-4 w-4" />
-                Stop
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4" />
-                Run
-              </>
-            )}
+            <RotateCcw className="h-4 w-4" />
+            Reset
           </Button>
           
           <Button
             onClick={handleStep}
             variant="outline"
-            disabled={isRunning}
+            disabled={executionState === 'running'}
             className="flex items-center gap-2"
           >
             <StepForward className="h-4 w-4" />
